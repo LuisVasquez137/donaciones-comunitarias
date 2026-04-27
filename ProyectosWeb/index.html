@@ -1,0 +1,792 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title id="page-title">Lista de Donaciones</title>
+
+  <!-- Google Fonts: Playfair Display -->
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Playfair+Display:wght@600;700&family=Inter:wght@400;500;600&display=swap');
+  </style>
+
+  <!-- Tailwind CSS -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          colors: {
+            accent: '#0269b6',
+          },
+          fontFamily: {
+            playfair: ['Playfair Display', 'serif'],
+            inter: ['Inter', 'sans-serif'],
+          },
+        },
+      },
+    };
+  </script>
+
+  <!-- Animate.css -->
+  <link
+    rel="stylesheet"
+    href="https://cdnjs.cloudflare.com/ajax/libs/animate.css/4.1.1/animate.min.css"
+  />
+
+  <!-- Firebase v8 compat -->
+  <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-firestore.js"></script>
+
+  <style>
+    /* Stagger animation delay utilities */
+    .delay-100 { animation-delay: 0.1s; }
+    .delay-200 { animation-delay: 0.2s; }
+    .delay-300 { animation-delay: 0.3s; }
+    .delay-400 { animation-delay: 0.4s; }
+    .delay-500 { animation-delay: 0.5s; }
+
+    /* Input focus ring color override */
+    input:focus {
+      outline: 2px solid #0269b6;
+      outline-offset: 0;
+    }
+
+    /* Smooth card transition */
+    .item-card {
+      transition: opacity 0.4s ease, background-color 0.4s ease;
+    }
+
+    /* Pulsing ring on profile photo */
+    @keyframes ring-pulse {
+      0%, 100% { box-shadow: 0 0 0 4px #0269b6, 0 0 0 8px rgba(2,105,182,0.15); }
+      50%       { box-shadow: 0 0 0 4px #0269b6, 0 0 0 14px rgba(2,105,182,0.08); }
+    }
+    .photo-ring {
+      animation: ring-pulse 3s ease-in-out infinite;
+    }
+  </style>
+</head>
+
+<body class="bg-white font-inter min-h-screen">
+
+  <!-- =====================================================
+       MODAL OBLIGATORIO — Identificación del visitante
+       ===================================================== -->
+  <div
+    id="modal"
+    class="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm"
+    style="display: none;"
+  >
+    <div class="bg-white rounded-3xl shadow-2xl p-8 w-full max-w-md mx-4 animate__animated animate__fadeInDown">
+      <!-- Icono decorativo -->
+      <div class="flex justify-center mb-4">
+        <div class="w-14 h-14 rounded-full bg-accent/10 flex items-center justify-center">
+          <svg xmlns="http://www.w3.org/2000/svg" class="w-7 h-7 text-accent" fill="none" viewBox="0 0 24 24" stroke="#0269b6" stroke-width="1.8">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
+          </svg>
+        </div>
+      </div>
+
+      <h2 class="font-playfair text-2xl font-bold text-gray-800 text-center mb-1">
+        ¡Bienvenido/a!
+      </h2>
+      <p class="text-gray-500 text-sm text-center mb-6">
+        Para donar, necesitamos saber quién eres.
+      </p>
+
+      <form id="modal-form" novalidate>
+        <div class="mb-4">
+          <label for="input-nombre" class="block text-sm font-semibold text-gray-700 mb-1">
+            Nombre completo <span class="text-red-500">*</span>
+          </label>
+          <input
+            id="input-nombre"
+            type="text"
+            placeholder="Ej: Ana González"
+            class="w-full border border-gray-300 rounded-xl px-4 py-3 text-gray-800 text-sm focus:border-accent transition"
+            autocomplete="name"
+            required
+          />
+        </div>
+
+        <div class="mb-6">
+          <label for="input-telefono" class="block text-sm font-semibold text-gray-700 mb-1">
+            Teléfono (WhatsApp) <span class="text-red-500">*</span>
+          </label>
+          <div class="flex items-center border border-gray-300 rounded-xl overflow-hidden focus-within:outline focus-within:outline-2 focus-within:outline-accent">
+            <span class="px-3 py-3 bg-gray-50 text-gray-500 text-sm font-medium border-r border-gray-300 shrink-0 select-none">
+              +502
+            </span>
+            <input
+              id="input-telefono"
+              type="tel"
+              placeholder="xxxx-xxxx"
+              class="flex-1 px-3 py-3 text-gray-800 text-sm bg-white focus:outline-none"
+              autocomplete="tel-national"
+              maxlength="9"
+              required
+            />
+          </div>
+        </div>
+
+        <p id="modal-error" class="text-red-500 text-xs mb-3 hidden flex items-center gap-1">
+          <svg xmlns="http://www.w3.org/2000/svg" class="w-3.5 h-3.5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M12 9v2m0 4h.01M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z" />
+          </svg>
+          <span id="modal-error-msg">Debes completar todos los campos.</span>
+        </p>
+
+        <button
+          type="submit"
+          class="w-full bg-accent hover:bg-blue-700 text-white font-semibold rounded-xl py-3 transition-colors duration-200 text-sm"
+        >
+          Continuar
+        </button>
+      </form>
+    </div>
+  </div>
+
+  <!-- =====================================================
+       MODAL 2 — Detalle del artículo (foto + descripción)
+       ===================================================== -->
+  <div
+    id="modal-detalle"
+    class="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm"
+    style="display:none;"
+  >
+    <div class="bg-white rounded-3xl shadow-2xl w-full max-w-sm mx-4 overflow-hidden animate__animated animate__fadeInUp">
+      <!-- Foto del artículo -->
+      <div class="relative w-full h-56 bg-gray-100 flex items-center justify-center">
+        <img id="detalle-foto" src="" alt="" class="w-full h-full object-cover hidden" />
+        <!-- Placeholder cuando no hay foto -->
+        <div id="detalle-foto-placeholder" class="flex flex-col items-center text-gray-300">
+          <svg xmlns="http://www.w3.org/2000/svg" class="w-16 h-16 mb-2" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+          </svg>
+          <span class="text-xs">Sin imagen</span>
+        </div>
+        <!-- Badge cantidad donada -->
+        <div id="detalle-badge" class="absolute top-3 right-3"></div>
+      </div>
+
+      <div class="p-6">
+        <h3 id="detalle-nombre" class="font-playfair text-xl font-bold text-gray-800 mb-2"></h3>
+        <p id="detalle-descripcion" class="text-gray-500 text-sm leading-relaxed mb-5"></p>
+
+        <!-- Lista donantes dentro del modal -->
+        <div id="detalle-donantes-wrap" class="mb-5 hidden">
+          <p class="text-xs text-gray-400 font-medium mb-2">Ya donaron:</p>
+          <ul id="detalle-donantes-lista" class="flex flex-col gap-1"></ul>
+        </div>
+
+        <div class="flex gap-3">
+          <button
+            onclick="cerrarDetalle()"
+            class="flex-1 border border-gray-200 text-gray-500 font-semibold rounded-xl py-2.5 text-sm hover:bg-gray-50 transition-colors"
+          >
+            Cancelar
+          </button>
+          <button
+            id="btn-confirmar-donacion"
+            onclick="confirmarDonacion()"
+            class="flex-1 bg-accent hover:bg-blue-700 text-white font-semibold rounded-xl py-2.5 text-sm transition-colors flex items-center justify-center gap-2"
+          >
+            <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z" />
+            </svg>
+            Confirmar donación
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- =====================================================
+       MODAL 3 — ¿Donar otro o terminar?
+       ===================================================== -->
+  <div
+    id="modal-siguiente"
+    class="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm"
+    style="display:none;"
+  >
+    <div class="bg-white rounded-3xl shadow-2xl p-7 w-full max-w-sm mx-4 animate__animated animate__fadeInUp">
+      <!-- Ícono de éxito -->
+      <div class="flex justify-center mb-4">
+        <div class="w-14 h-14 rounded-full bg-green-50 flex items-center justify-center">
+          <svg xmlns="http://www.w3.org/2000/svg" class="w-7 h-7 text-green-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7" />
+          </svg>
+        </div>
+      </div>
+
+      <h3 class="font-playfair text-xl font-bold text-gray-800 text-center mb-1">¡Artículo agregado!</h3>
+      <p class="text-gray-500 text-sm text-center mb-5">¿Deseas donar algún otro artículo?</p>
+
+      <!-- Resumen del carrito -->
+      <div class="bg-gray-50 rounded-2xl p-4 mb-5">
+        <p class="text-xs text-gray-400 font-medium mb-2 uppercase tracking-wide">Tu donación hasta ahora:</p>
+        <ul id="carrito-lista" class="flex flex-col gap-1.5"></ul>
+      </div>
+
+      <!-- Mensaje de agradecimiento de la Hermana Aceituno -->
+      <div class="relative bg-blue-50 border border-accent/20 rounded-2xl px-5 py-4 mb-5">
+        <!-- Comillas decorativas -->
+        <svg class="absolute top-3 left-3 w-5 h-5 text-accent/20" fill="currentColor" viewBox="0 0 24 24">
+          <path d="M14.017 21v-7.391c0-5.704 3.731-9.57 8.983-10.609l.995 2.151c-2.432.917-3.995 3.638-3.995 5.849h4v10h-9.983zm-14.017 0v-7.391c0-5.704 3.748-9.57 9-10.609l.996 2.151c-2.433.917-3.996 3.638-3.996 5.849h3.983v10h-9.983z"/>
+        </svg>
+        <p class="text-gray-600 text-xs leading-relaxed italic pl-4">
+          Con todo mi corazón, quiero agradecer el tiempo que se tomaron para leer esta lista y ser parte, aunque sea de una manera pequeña, de este paso tan importante en mi vida. Esta misión no es solo un viaje, es un llamado que he decidido aceptar con fe, entrega y amor. Por eso, cada gesto que nazca de un corazón dispuesto a dar, lo recibo como una manifestación de la bondad de Dios en mi camino.
+        </p>
+        <p class="text-accent text-xs font-semibold mt-2 pl-4 text-right">— Hermana Aceituno</p>
+      </div>
+
+      <div class="flex flex-col gap-3">
+        <button
+          onclick="seguirDonando()"
+          class="w-full border-2 border-accent text-accent font-semibold rounded-xl py-2.5 text-sm hover:bg-blue-50 transition-colors flex items-center justify-center gap-2"
+        >
+          <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M12 4v16m8-8H4" />
+          </svg>
+          Sí, donar otro artículo
+        </button>
+        <button
+          onclick="terminarDonacion()"
+          class="w-full bg-green-500 hover:bg-green-600 text-white font-semibold rounded-xl py-2.5 text-sm transition-colors flex items-center justify-center gap-2"
+        >
+          <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" viewBox="0 0 32 32" fill="white">
+            <path d="M16.004 2.667C8.64 2.667 2.667 8.64 2.667 16c0 2.363.635 4.594 1.742 6.527L2.667 29.333l6.986-1.827A13.28 13.28 0 0016.004 29.333C23.36 29.333 29.333 23.36 29.333 16S23.36 2.667 16.004 2.667zm0 24.267c-2.19 0-4.24-.61-5.99-1.67l-.428-.254-4.146 1.084 1.104-4.038-.28-.444A10.867 10.867 0 015.12 16C5.12 9.988 10 5.12 16.004 5.12 22.016 5.12 26.88 9.988 26.88 16c0 6.016-4.864 10.934-10.876 10.934zm5.974-8.188c-.327-.164-1.934-.953-2.233-1.063-.3-.11-.517-.164-.734.164-.217.326-.84 1.063-1.03 1.28-.19.218-.38.245-.707.082-.327-.163-1.38-.508-2.628-1.622-.97-.866-1.627-1.935-1.818-2.262-.19-.327-.02-.503.143-.666.147-.146.327-.38.49-.57.164-.19.218-.327.327-.544.11-.218.055-.408-.027-.571-.082-.163-.734-1.77-1.006-2.422-.265-.635-.534-.548-.734-.558l-.625-.01c-.218 0-.571.082-.87.408-.3.326-1.143 1.117-1.143 2.724s1.17 3.16 1.333 3.378c.164.218 2.302 3.515 5.577 4.928.78.337 1.388.537 1.862.688.782.249 1.494.214 2.057.13.628-.094 1.934-.79 2.207-1.553.272-.762.272-1.415.19-1.553-.08-.136-.3-.218-.626-.38z"/>
+          </svg>
+          Terminar y coordinar por WhatsApp
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- =====================================================
+       HEADER — Foto circular + Nombre de la persona
+       ===================================================== -->
+  <header class="bg-white">
+    <div class="max-w-6xl mx-auto px-6 pt-12 pb-10 flex flex-col items-center text-center">
+
+      <!-- Foto circular -->
+      <div class="mb-6">
+        <img
+          id="profile-photo"
+          src=""
+          alt="Foto de perfil"
+          class="w-40 h-40 rounded-full object-cover photo-ring"
+        />
+      </div>
+
+      <!-- Misión badge -->
+      <span class="inline-flex items-center gap-1.5 text-accent text-xs font-semibold uppercase tracking-widest mb-3 bg-blue-50 border border-accent/20 rounded-full px-3 py-1">
+        <svg xmlns="http://www.w3.org/2000/svg" class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="#0269b6" stroke-width="2.2">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
+          <path stroke-linecap="round" stroke-linejoin="round" d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
+        </svg>
+        Misión Chile Santiago Oeste
+      </span>
+
+      <!-- Nombre de la persona -->
+      <h1 id="profile-name" class="font-playfair text-4xl md:text-5xl font-bold text-gray-800 leading-tight mb-1">
+        <!-- Se rellena desde CONFIG -->
+      </h1>
+
+      <!-- Iglesia -->
+      <p class="text-gray-400 text-xs uppercase tracking-wide mb-8">
+        La Iglesia de Jesucristo de los Santos de los Últimos Días
+      </p>
+
+      <!-- Separador decorativo -->
+      <div class="flex items-center gap-3 w-full max-w-xs mb-8">
+        <div class="flex-1 h-px bg-gray-200"></div>
+        <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4 text-accent/50" fill="#0269b6" viewBox="0 0 24 24">
+          <path d="M12 21.593c-5.63-5.539-11-10.297-11-14.402 0-3.791 3.068-5.191 5.281-5.191 1.312 0 4.151.501 5.719 4.457 1.59-3.968 4.464-4.447 5.726-4.447 2.54 0 5.274 1.621 5.274 5.181 0 4.069-5.136 8.625-11 14.402z"/>
+        </svg>
+        <div class="flex-1 h-px bg-gray-200"></div>
+      </div>
+
+      <!-- Mensaje personal -->
+      <div class="text-left w-full">
+        <p class="text-gray-600 text-sm leading-relaxed mb-4">
+          Quiero expresar mi más sincero agradecimiento a todas las personas que desean apoyarme en esta
+          etapa tan especial de mi vida. Estoy por servir en una misión en Chile, un llamado que he
+          recibido con <span class="text-accent font-medium">fe</span> y con el deseo de acercarme más a Dios
+          y servir a los demás con amor.
+        </p>
+        <p class="text-gray-600 text-sm leading-relaxed mb-4">
+          En este proceso, más que apoyo económico, estoy buscando apoyo con algunos artículos
+          necesarios para mi misión. Si alguien siente en su corazón el deseo de ayudarme con alguno
+          de ellos, lo recibiré como una bendición y con profunda gratitud.
+        </p>
+        <p class="text-gray-500 text-sm leading-relaxed italic">
+          "Agradezco de corazón sus oraciones, su cariño y el acompañamiento que me brindan en este
+          camino que estoy por comenzar, confiando en que Dios guiará cada uno de mis pasos."
+        </p>
+      </div>
+
+      <!-- Separador final -->
+      <div class="w-full h-px bg-gray-100 mt-10"></div>
+
+    </div>
+  </header>
+
+  <!-- Encabezado de sección lista -->
+  <div class="max-w-6xl mx-auto px-6 pt-8 pb-2 flex items-center gap-3">
+    <div class="flex-1 h-px bg-gray-100"></div>
+    <p class="text-accent text-xs font-semibold uppercase tracking-widest whitespace-nowrap">
+      Artículos para donar
+    </p>
+    <div class="flex-1 h-px bg-gray-100"></div>
+  </div>
+
+  <!-- =====================================================
+       SECCIÓN PRINCIPAL — Lista de artículos
+       ===================================================== -->
+  <main class="max-w-6xl mx-auto px-6 pb-16 pt-4">
+
+    <!-- Estado de carga -->
+    <div id="loading" class="flex flex-col items-center justify-center py-20 text-gray-400">
+      <svg class="animate-spin w-8 h-8 mb-3 text-accent" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+        <circle class="opacity-25" cx="12" cy="12" r="10" stroke="#0269b6" stroke-width="4"></circle>
+        <path class="opacity-75" fill="#0269b6" d="M4 12a8 8 0 018-8v8H4z"></path>
+      </svg>
+      <span class="text-sm">Cargando artículos...</span>
+    </div>
+
+    <!-- Estado vacío -->
+    <div id="empty" class="hidden text-center py-20 text-gray-400">
+      <svg xmlns="http://www.w3.org/2000/svg" class="w-12 h-12 mx-auto mb-4 opacity-40" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M20 13V7a2 2 0 00-2-2H6a2 2 0 00-2 2v6m16 0v6a2 2 0 01-2 2H6a2 2 0 01-2-2v-6m16 0H4" />
+      </svg>
+      <p class="text-sm">Aún no hay artículos publicados.</p>
+    </div>
+
+    <!-- Grid de tarjetas -->
+    <div
+      id="lista"
+      class="grid grid-cols-2 lg:grid-cols-4 gap-4"
+    ></div>
+
+  </main>
+
+  <!-- =====================================================
+       TOAST de confirmación
+       ===================================================== -->
+  <div
+    id="toast"
+    class="fixed bottom-6 left-1/2 -translate-x-1/2 z-40 bg-gray-800 text-white text-sm px-5 py-3 rounded-2xl shadow-lg
+           opacity-0 pointer-events-none transition-opacity duration-300"
+  >
+    <span id="toast-msg"></span>
+  </div>
+
+  <!-- =====================================================
+       SCRIPTS
+       ===================================================== -->
+  <script>
+    // ─────────────────────────────────────────────────────
+    // CONFIG — Personalizá estos valores antes de publicar
+    // ─────────────────────────────────────────────────────
+    const CONFIG = {
+      NOMBRE_PERSONA:  'Hermana Aceituno',      // Nombre que aparece en el header
+      FOTO_URL:        'Linda.jpg',             // URL de la foto circular
+      WHATSAPP_NUMERO: '50248089855',            // Número sin + ni espacios
+      COLECCION:       'articulos',             // Nombre de la colección en Firestore
+      TITULO_PAGINA:   'Lista de Donaciones',   // <title> de la pestaña
+    };
+
+    // ─────────────────────────────────────────────────────
+    // Firebase config
+    // ─────────────────────────────────────────────────────
+    const firebaseConfig = {
+      apiKey:            "AIzaSyDEIAe5de4xFGaQY-l4-j20kLDzcjfJ4uA",
+      authDomain:        "donaciones-misioneros.firebaseapp.com",
+      projectId:         "donaciones-misioneros",
+      storageBucket:     "donaciones-misioneros.firebasestorage.app",
+      messagingSenderId: "119584590347",
+      appId:             "1:119584590347:web:4f6ea848cd784b2229950e",
+      measurementId:     "G-XPCBSCEQ9Q",
+    };
+
+    // ─────────────────────────────────────────────────────
+    // Init
+    // ─────────────────────────────────────────────────────
+    firebase.initializeApp(firebaseConfig);
+    const db = firebase.firestore();
+
+    // Aplicar CONFIG al DOM estático
+    document.getElementById('page-title').textContent   = CONFIG.TITULO_PAGINA;
+    document.getElementById('profile-name').textContent = CONFIG.NOMBRE_PERSONA;
+    document.getElementById('profile-photo').src        = CONFIG.FOTO_URL;
+    document.getElementById('profile-photo').alt        = CONFIG.NOMBRE_PERSONA;
+
+    // ─────────────────────────────────────────────────────
+    // Modal de identificación
+    // ─────────────────────────────────────────────────────
+    const modal        = document.getElementById('modal');
+    const modalForm    = document.getElementById('modal-form');
+    const modalError   = document.getElementById('modal-error');
+
+    function getDonante() {
+      try {
+        return JSON.parse(localStorage.getItem('donante')) || null;
+      } catch (_) {
+        return null;
+      }
+    }
+
+    function showModal() {
+      modal.style.display = 'flex';
+      document.body.style.overflow = 'hidden';
+    }
+
+    function hideModal() {
+      modal.style.display = 'none';
+      document.body.style.overflow = '';
+    }
+
+    if (!getDonante()) {
+      showModal();
+    }
+
+    // Auto-formato xxxx-xxxx al escribir el teléfono
+    document.getElementById('input-telefono').addEventListener('input', function () {
+      // Solo dígitos
+      let digits = this.value.replace(/\D/g, '').slice(0, 8);
+      // Insertar guión después del dígito 4
+      if (digits.length > 4) {
+        this.value = digits.slice(0, 4) + '-' + digits.slice(4);
+      } else {
+        this.value = digits;
+      }
+    });
+
+    function showModalError(msg) {
+      document.getElementById('modal-error-msg').textContent = msg;
+      modalError.classList.remove('hidden');
+    }
+
+    modalForm.addEventListener('submit', function (e) {
+      e.preventDefault();
+      const nombre   = document.getElementById('input-nombre').value.trim();
+      const telefono = document.getElementById('input-telefono').value.trim();
+
+      if (!nombre && !telefono) {
+        showModalError('Debes completar todos los campos.');
+        return;
+      }
+      if (!nombre) {
+        showModalError('El nombre completo es requerido.');
+        return;
+      }
+      if (!telefono || telefono.replace(/\D/g, '').length < 8) {
+        showModalError('Ingresa un número de teléfono válido (8 dígitos).');
+        return;
+      }
+
+      modalError.classList.add('hidden');
+      localStorage.setItem('donante', JSON.stringify({ nombre, telefono: '+502 ' + telefono }));
+      hideModal();
+      showToast('¡Listo, ' + nombre + '! Ya podés donar artículos.');
+    });
+
+    // ─────────────────────────────────────────────────────
+    // Toast helper
+    // ─────────────────────────────────────────────────────
+    let toastTimer = null;
+    function showToast(msg, duration = 3500) {
+      const toast = document.getElementById('toast');
+      document.getElementById('toast-msg').textContent = msg;
+      toast.style.opacity = '1';
+      toast.style.pointerEvents = 'auto';
+      clearTimeout(toastTimer);
+      toastTimer = setTimeout(() => {
+        toast.style.opacity = '0';
+        toast.style.pointerEvents = 'none';
+      }, duration);
+    }
+
+    // ─────────────────────────────────────────────────────
+    // Carrito de sesión (artículos donados en esta visita)
+    // ─────────────────────────────────────────────────────
+    let carrito = [];          // [{ id, nombre }]
+    let articuloActual = null; // { id, nombre, foto, descripcion }
+
+    // ─────────────────────────────────────────────────────
+    // Render de artículos — cards clickeables
+    // ─────────────────────────────────────────────────────
+    function renderItems(docs) {
+      const lista   = document.getElementById('lista');
+      const loading = document.getElementById('loading');
+      const empty   = document.getElementById('empty');
+
+      loading.classList.add('hidden');
+      lista.innerHTML = '';
+
+      if (docs.length === 0) {
+        empty.classList.remove('hidden');
+        return;
+      }
+      empty.classList.add('hidden');
+
+      docs.forEach((doc, index) => {
+        const data       = doc.data();
+        const id         = doc.id;
+        const nombre     = data.nombre      || '(Sin nombre)';
+        const foto       = data.foto        || '';
+        const descripcion= data.descripcion || '';
+        const donaciones = Array.isArray(data.donaciones) ? data.donaciones : [];
+        const cantidad   = donaciones.length;
+        const delay      = Math.min(index * 80, 600);
+
+        // Badge cantidad
+        const badge = cantidad > 0
+          ? `<span class="inline-flex items-center gap-1 text-xs font-semibold text-green-700 bg-green-50 border border-green-200 rounded-full px-2.5 py-0.5 shrink-0">
+               <svg xmlns="http://www.w3.org/2000/svg" class="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5"><path stroke-linecap="round" stroke-linejoin="round" d="M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z"/></svg>
+               ${cantidad} donado${cantidad > 1 ? 's' : ''}
+             </span>`
+          : `<span class="inline-flex items-center gap-1 text-xs font-semibold text-accent bg-blue-50 border border-accent/30 rounded-full px-2.5 py-0.5 shrink-0">
+               <svg xmlns="http://www.w3.org/2000/svg" class="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="#0269b6" stroke-width="2.5"><path stroke-linecap="round" stroke-linejoin="round" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+               Disponible
+             </span>`;
+
+        // Mini lista de donantes en la card
+        const miniDonantes = cantidad > 0
+          ? `<div class="border-t border-gray-100 pt-2 mt-1">
+               <p class="text-xs text-gray-400 mb-1">Donado por:</p>
+               <ul class="flex flex-col gap-0.5">
+                 ${donaciones.map(d => `
+                   <li class="flex items-center gap-1.5 text-xs text-gray-600">
+                     <svg xmlns="http://www.w3.org/2000/svg" class="w-3 h-3 text-green-400 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5"><path stroke-linecap="round" stroke-linejoin="round" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"/></svg>
+                     ${escapeHtml(d.nombre)}
+                   </li>`).join('')}
+               </ul>
+             </div>`
+          : '';
+
+        // Miniatura de foto si existe
+        const miniatura = foto
+          ? `<img src="${escapeHtml(foto)}" alt="${escapeHtml(nombre)}" class="w-full h-28 object-cover rounded-xl mb-3" />`
+          : '';
+
+        const card = document.createElement('div');
+        card.className = [
+          'item-card', 'bg-white', 'rounded-2xl', 'shadow-md', 'p-5',
+          'flex', 'flex-col', 'gap-2',
+          'border', cantidad > 0 ? 'border-green-200' : 'border-accent',
+          'animate__animated', 'animate__fadeInUp',
+          'cursor-pointer', 'hover:shadow-lg', 'transition-shadow', 'duration-200',
+        ].join(' ');
+        card.style.animationDelay    = delay + 'ms';
+        card.style.animationFillMode = 'both';
+
+        card.innerHTML = `
+          ${miniatura}
+          <div class="flex items-start justify-between gap-2">
+            <h3 class="font-semibold text-gray-800 text-base leading-snug">${escapeHtml(nombre)}</h3>
+            ${badge}
+          </div>
+          ${descripcion ? `<p class="text-gray-400 text-xs leading-relaxed line-clamp-2">${escapeHtml(descripcion)}</p>` : ''}
+          ${miniDonantes}
+          <div class="mt-auto pt-2">
+            <span class="inline-flex items-center gap-1.5 text-accent text-xs font-semibold">
+              Ver detalle y donar
+              <svg xmlns="http://www.w3.org/2000/svg" class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5"><path stroke-linecap="round" stroke-linejoin="round" d="M9 5l7 7-7 7"/></svg>
+            </span>
+          </div>
+        `;
+
+        card.addEventListener('click', () =>
+          abrirDetalle(id, nombre, foto, descripcion, donaciones)
+        );
+
+        lista.appendChild(card);
+      });
+    }
+
+    // ─────────────────────────────────────────────────────
+    // Modal 2 — Abrir detalle del artículo
+    // ─────────────────────────────────────────────────────
+    function abrirDetalle(id, nombre, foto, descripcion, donaciones) {
+      if (!getDonante()) { showModal(); return; }
+
+      articuloActual = { id, nombre, foto, descripcion };
+
+      // Foto
+      const imgEl          = document.getElementById('detalle-foto');
+      const placeholderEl  = document.getElementById('detalle-foto-placeholder');
+      if (foto) {
+        imgEl.src = foto;
+        imgEl.classList.remove('hidden');
+        placeholderEl.classList.add('hidden');
+      } else {
+        imgEl.classList.add('hidden');
+        placeholderEl.classList.remove('hidden');
+      }
+
+      // Badge cantidad
+      const cantidad = donaciones.length;
+      document.getElementById('detalle-badge').innerHTML = cantidad > 0
+        ? `<span class="bg-green-500 text-white text-xs font-bold px-2.5 py-1 rounded-full shadow">${cantidad} donado${cantidad > 1 ? 's' : ''}</span>`
+        : '';
+
+      // Nombre y descripción
+      document.getElementById('detalle-nombre').textContent      = nombre;
+      document.getElementById('detalle-descripcion').textContent = descripcion || 'Sin descripción adicional.';
+
+      // Lista de donantes
+      const wrap  = document.getElementById('detalle-donantes-wrap');
+      const lista = document.getElementById('detalle-donantes-lista');
+      if (donaciones.length > 0) {
+        lista.innerHTML = donaciones.map(d => `
+          <li class="flex items-center gap-1.5 text-xs text-gray-600">
+            <svg xmlns="http://www.w3.org/2000/svg" class="w-3 h-3 text-green-400 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5"><path stroke-linecap="round" stroke-linejoin="round" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"/></svg>
+            ${escapeHtml(d.nombre)}
+          </li>`).join('');
+        wrap.classList.remove('hidden');
+      } else {
+        wrap.classList.add('hidden');
+      }
+
+      // Resetear botón
+      const btn = document.getElementById('btn-confirmar-donacion');
+      btn.disabled = false;
+      btn.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z"/></svg> Confirmar donación`;
+
+      document.getElementById('modal-detalle').style.display = 'flex';
+      document.body.style.overflow = 'hidden';
+    }
+
+    function cerrarDetalle() {
+      document.getElementById('modal-detalle').style.display = 'none';
+      document.body.style.overflow = '';
+      articuloActual = null;
+    }
+
+    // ─────────────────────────────────────────────────────
+    // Confirmar donación desde Modal 2
+    // ─────────────────────────────────────────────────────
+    async function confirmarDonacion() {
+      if (!articuloActual) return;
+      const donante = getDonante();
+      if (!donante) { cerrarDetalle(); showModal(); return; }
+
+      const { id, nombre } = articuloActual;
+      const btn = document.getElementById('btn-confirmar-donacion');
+      btn.disabled = true;
+      btn.innerHTML = '<svg class="animate-spin w-4 h-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="white" stroke-width="4"></circle><path class="opacity-75" fill="white" d="M4 12a8 8 0 018-8v8H4z"></path></svg> Guardando...';
+
+      try {
+        const ts    = Date.now();
+        const batch = db.batch();
+
+        // 1. Agregar al array donaciones del artículo
+        batch.update(db.collection(CONFIG.COLECCION).doc(id), {
+          donaciones: firebase.firestore.FieldValue.arrayUnion({
+            nombre:   donante.nombre,
+            telefono: donante.telefono,
+            ts:       ts,
+          }),
+        });
+
+        // 2. Registro en colección "donantes"
+        batch.set(db.collection('donantes').doc(), {
+          nombre:     donante.nombre,
+          telefono:   donante.telefono,
+          articulo:   nombre,
+          articuloId: id,
+          ts:         ts,
+          fecha:      new Date(ts).toLocaleString('es-GT', { timeZone: 'America/Guatemala' }),
+        });
+
+        await batch.commit();
+
+        // Agregar al carrito de sesión (evitar duplicados del mismo artículo)
+        if (!carrito.some(c => c.id === id)) {
+          carrito.push({ id, nombre });
+        }
+
+        // Cerrar modal 2 y abrir modal 3
+        cerrarDetalle();
+        abrirModalSiguiente();
+
+      } catch (err) {
+        console.error('Error al donar:', err);
+        showToast('Ocurrió un error. Intentá de nuevo.');
+        btn.disabled = false;
+        btn.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z"/></svg> Confirmar donación`;
+      }
+    }
+
+    // ─────────────────────────────────────────────────────
+    // Modal 3 — ¿Donar otro o terminar?
+    // ─────────────────────────────────────────────────────
+    function abrirModalSiguiente() {
+      // Actualizar lista del carrito en el modal
+      const listaEl = document.getElementById('carrito-lista');
+      listaEl.innerHTML = carrito.map(c => `
+        <li class="flex items-center gap-2 text-sm text-gray-700">
+          <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4 text-green-500 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"/>
+          </svg>
+          ${escapeHtml(c.nombre)}
+        </li>`).join('');
+
+      document.getElementById('modal-siguiente').style.display = 'flex';
+      document.body.style.overflow = 'hidden';
+    }
+
+    function seguirDonando() {
+      document.getElementById('modal-siguiente').style.display = 'none';
+      document.body.style.overflow = '';
+    }
+
+    function terminarDonacion() {
+      document.getElementById('modal-siguiente').style.display = 'none';
+      document.body.style.overflow = '';
+
+      const donante = getDonante();
+      const listaTexto = carrito.map(c => `• ${c.nombre}`).join('\n');
+      const mensaje = `Saludos Hermana Aceituno 🙏\n\nMe llamo ${donante ? donante.nombre : ''} y quisiera donar los siguientes artículos:\n\n${listaTexto}\n\n¿Me podría indicar cómo y cuándo coordinar la entrega? Muchas gracias por permitirme ser parte de su misión. ¡Que Dios bendiga su servicio!`;
+
+      window.open(
+        'https://wa.me/' + CONFIG.WHATSAPP_NUMERO + '?text=' + encodeURIComponent(mensaje),
+        '_blank'
+      );
+
+      carrito = []; // Limpiar carrito tras finalizar
+    }
+
+    // ─────────────────────────────────────────────────────
+    // Escape HTML helper (prevenir XSS con datos de Firestore)
+    // ─────────────────────────────────────────────────────
+    function escapeHtml(str) {
+      return String(str)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
+    }
+
+    // ─────────────────────────────────────────────────────
+    // Suscripción en tiempo real con onSnapshot
+    // ─────────────────────────────────────────────────────
+    db.collection(CONFIG.COLECCION)
+      .orderBy('nombre')
+      .onSnapshot(
+        function (snapshot) {
+          renderItems(snapshot.docs);
+        },
+        function (error) {
+          console.error('Error en onSnapshot:', error);
+          document.getElementById('loading').innerHTML =
+            '<p class="text-red-400 text-sm">Error al conectar con la base de datos.</p>';
+        }
+      );
+  </script>
+</body>
+</html>
