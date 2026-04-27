@@ -367,7 +367,7 @@
     <!-- Grid de tarjetas -->
     <div
       id="lista"
-      class="grid grid-cols-2 lg:grid-cols-4 gap-4"
+      class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4"
     ></div>
 
   </main>
@@ -569,13 +569,13 @@
 
         // Miniatura de foto si existe
         const miniatura = foto
-          ? `<img src="${escapeHtml(foto)}" alt="${escapeHtml(nombre)}" class="w-full h-28 object-cover rounded-xl mb-3" />`
+          ? `<img src="${escapeHtml(foto)}" alt="${escapeHtml(nombre)}" class="w-full h-40 object-cover rounded-t-2xl" />`
           : '';
 
         const card = document.createElement('div');
         card.className = [
-          'item-card', 'bg-white', 'rounded-2xl', 'shadow-md', 'p-5',
-          'flex', 'flex-col', 'gap-2',
+          'item-card', 'bg-white', 'rounded-2xl', 'shadow-md', 'overflow-hidden',
+          'flex', 'flex-col',
           'border', cantidad > 0 ? 'border-green-200' : 'border-accent',
           'animate__animated', 'animate__fadeInUp',
           'cursor-pointer', 'hover:shadow-lg', 'transition-shadow', 'duration-200',
@@ -585,17 +585,19 @@
 
         card.innerHTML = `
           ${miniatura}
+          <div class="flex flex-col gap-2 p-4 flex-1">
           <div class="flex items-start justify-between gap-2">
             <h3 class="font-semibold text-gray-800 text-base leading-snug">${escapeHtml(nombre)}</h3>
             ${badge}
           </div>
-          ${descripcion ? `<p class="text-gray-400 text-xs leading-relaxed line-clamp-2">${escapeHtml(descripcion)}</p>` : ''}
+          ${descripcion ? `<p class="text-gray-400 text-sm leading-relaxed line-clamp-2">${escapeHtml(descripcion)}</p>` : ''}
           ${miniDonantes}
           <div class="mt-auto pt-2">
             <span class="inline-flex items-center gap-1.5 text-accent text-xs font-semibold">
               Ver detalle y donar
               <svg xmlns="http://www.w3.org/2000/svg" class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5"><path stroke-linecap="round" stroke-linejoin="round" d="M9 5l7 7-7 7"/></svg>
             </span>
+          </div>
           </div>
         `;
 
